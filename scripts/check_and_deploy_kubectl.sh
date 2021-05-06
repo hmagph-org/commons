@@ -320,58 +320,16 @@ if [ "${CLUSTER_INGRESS_SUBDOMAIN}" ] && [ "${USE_ISTIO_GATEWAY}" != true ]; the
 fi
 if [ -z "$APP_URL" ] && [ "$APP_SERVICE" ]; then
   # No ingress resource linked the given service
-  # Fallback according to the service type
-  if [ "$APP_SERVICE_TYPE" = "NodePort" ]; then
-    # Only NodePort will be available
-    echo ""
-    if [ "${USE_ISTIO_GATEWAY}" = true ]; then
-      PORT=$( kubectl get svc istio-ingressgateway -n istio-system -o json | jq -r '.spec.ports[] | select (.name=="http2") | .nodePort ' )
-      echo -e "*** istio gateway enabled ***"
-    else
-      PORT=$( kubectl get service ${APP_SERVICE} --namespace ${CLUSTER_NAMESPACE} -o json | jq -r '.spec.ports[0].nodePort' )
+  if kubectl explain route > /dev/null 2>&1; then
+  # Assuming the kubernetes target cluster is an openshift cluster
+    # Check if a route exists for exposing the service ${APP_SERVICE}
+    if  kubectl get routes --namespace ${CLUSTER_NAMESPACE} -o json | jq --arg service "$APP_SERVICE" -e '.items[] | select(.spec.to.name==$service)'; then
+      echo "Existing route to expose service $APP_SERVICE"
+      echo "LOOKING for host in route exposing service $APP_SERVICE"
+      IP_ADDR=$(kubectl get routes --namespace ${CLUSTER_NAMESPACE} -o json | jq --arg service "$APP_SERVICE" -r '.items[] | select(.spec.to.name==$service) | .status.ingress[0].host')
+      PORT=80
+      export APP_URL=http://${IP_ADDR}:${PORT} # using 'export', the env var gets passed to next job in stage
+      echo -e "VIEW THE APPLICATION AT: ${APP_URL}"
     fi
-    if [ -z "${KUBERNETES_MASTER_ADDRESS}" ]; then
-      echo "Using first worker node ip address as NodeIP: ${IP_ADDR}"
-    else 
-      # check if a route resource exists in the this kubernetes cluster
-      if kubectl explain route > /dev/null 2>&1; then
-        # Assuming the kubernetes target cluster is an openshift cluster
-        # Check if a route exists for exposing the service ${APP_SERVICE}
-        if  kubectl get routes --namespace ${CLUSTER_NAMESPACE} -o json | jq --arg service "$APP_SERVICE" -e '.items[] | select(.spec.to.name==$service)'; then
-          echo "Existing route to expose service $APP_SERVICE"
-        else
-          # create OpenShift route
-cat > test-route.json << EOF
-{"apiVersion":"route.openshift.io/v1","kind":"Route","metadata":{"name":"${APP_SERVICE}"},"spec":{"to":{"kind":"Service","name":"${APP_SERVICE}"}}}
-EOF
-          echo ""
-          cat test-route.json
-          kubectl apply -f test-route.json --validate=false --namespace ${CLUSTER_NAMESPACE}
-          kubectl get routes --namespace ${CLUSTER_NAMESPACE}
-        fi
-        echo "LOOKING for host in route exposing service $APP_SERVICE"
-        IP_ADDR=$(kubectl get routes --namespace ${CLUSTER_NAMESPACE} -o json | jq --arg service "$APP_SERVICE" -r '.items[] | select(.spec.to.name==$service) | .status.ingress[0].host')
-        PORT=80
-      else
-        # Use the KUBERNETES_MASTER_ADRESS
-        IP_ADDR=${KUBERNETES_MASTER_ADDRESS}
-      fi
-    fi  
-    export APP_URL=http://${IP_ADDR}:${PORT} # using 'export', the env var gets passed to next job in stage
-    echo -e "VIEW THE APPLICATION AT: ${APP_URL}"
-  else
-    if [ -z "${KUBERNETES_MASTER_ADDRESS}" ]; then
-      CLUSTER_IP=$(kubectl get service ${APP_SERVICE} --namespace ${CLUSTER_NAMESPACE} -o json | jq -r '.spec.clusterIP')
-      if [ "$CLUSTER_IP" ]; then
-        IP_ADDR=$CLUSTER_IP
-      fi
-      PORT=$(kubectl get service ${APP_SERVICE} --namespace ${CLUSTER_NAMESPACE} -o json | jq -r '.spec.ports[0].port')
-    else 
-      # Use the KUBERNETES_MASTER_ADRESS
-      IP_ADDR=${KUBERNETES_MASTER_ADDRESS}
-      PORT=$(kubectl get service ${APP_SERVICE} --namespace ${CLUSTER_NAMESPACE} -o json | jq -r '.spec.ports[0].port')
-    fi
-    export APP_URL=http://${IP_ADDR}:${PORT} # using 'export', the env var gets passed to next job in stage
-    echo -e "VIEW THE APPLICATION AT: ${APP_URL}"
   fi
 fi
