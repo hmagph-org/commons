@@ -36,6 +36,8 @@ else
 fi
 echo "IMAGE $IMAGE"
 
+kubectl delete ns sat-test-phm
+
 # View build properties
 if [ -f build.properties ]; then 
   echo "build.properties:"
@@ -224,7 +226,8 @@ echo "=========================================================="
 echo "DEPLOYING using manifest"
 set -x
 kubectl apply --namespace ${CLUSTER_NAMESPACE} -f ${DEPLOYMENT_FILE} 
-#set +x
+if [[ "$PIPELINE_DEBUG" != 1 ]]; then set +x ; fi
+
 # Extract name from actual Kube deployment resource owning the deployed container image 
 # Ensure that the image match the repository, image name and tag without the @ sha id part to handle
 # case when image is sha-suffixed or not - ie:
@@ -240,7 +243,7 @@ if kubectl rollout status deploy/${DEPLOYMENT_NAME} --watch=true --timeout=${ROL
 else
   STATUS="fail"
 fi
-#set +x
+if [[ "$PIPELINE_DEBUG" != 1 ]]; then set +x ; fi
 
 # Dump events that occured during the rollout
 echo "SHOWING last events"
