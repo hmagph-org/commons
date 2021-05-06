@@ -36,8 +36,6 @@ else
 fi
 echo "IMAGE $IMAGE"
 
-kubectl delete ns sat-test-phm
-
 # View build properties
 if [ -f build.properties ]; then 
   echo "build.properties:"
